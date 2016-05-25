@@ -13,11 +13,11 @@ import (
 )
 
 var (
-	str, url, port, srvState, awsregion, tag, tagvalue, hostdiscovery, line                                                                      string
-	listTargetHosts, showMmemberStatus, listChecks, listAllSrv, deregisterSrv, listSrvInState, listNodeStatus, forceLeaveNode, dryRun, validnode bool
-	nsc                                                                                                                                          int
-	hosts                                                                                                                                        []string
-	wg                                                                                                                                           sync.WaitGroup
+	str, url, port, srvState, awsregion, tag, tagvalue, hostdiscovery, line, version                                                                  string
+	listTargetHosts, showMmemberStatus, listChecks, listAllSrv, deregisterSrv, listSrvInState, listNodeStatus, forceLeaveNode, dryRun, validnode, ver bool
+	nsc                                                                                                                                               int
+	hosts                                                                                                                                             []string
+	wg                                                                                                                                                sync.WaitGroup
 )
 
 func connection(uurl, pport string) *api.Client {
@@ -170,9 +170,15 @@ func main() {
 	flag.BoolVar(&deregisterSrv, []string{"drsrv", "-deregister-service"}, false, "Deregister service. Use it with --serviceState")
 	flag.BoolVar(&forceLeaveNode, []string{"fl", "-force-leave-node"}, false, "Force leave consul node. Use it with --nodeStatusCode")
 	flag.BoolVar(&dryRun, []string{"d", "-dryrun"}, false, "Dryrun")
+	flag.BoolVar(&ver, []string{"v", "-version"}, false, "Consul-cleaner Version")
 	flag.Parse()
 
 	consulClient := connection(url, port)
+
+	if ver == true {
+		fmt.Printf("Consul-cleaner Version: %s\n", version)
+		os.Exit(0)
+	}
 
 	switch hostdiscovery {
 	case "consul":
@@ -247,5 +253,6 @@ func main() {
 			}(ip)
 		}
 	}
+
 	wg.Wait()
 }

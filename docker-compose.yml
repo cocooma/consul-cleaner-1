@@ -11,6 +11,6 @@ builder:
     && mkdir ~/.ssh \
     && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config \
     && go get -d -v github.com/notonthehighstreet/consul-cleaner \
-    && go install --ldflags '-extldflags -static -s' -v github.com/notonthehighstreet/consul-cleaner \
+    && go install --ldflags "-X main.version=${GIT_TAG_NAME} -extldflags -static -s" -v github.com/notonthehighstreet/consul-cleaner \
     && mkdir /build/build \
     && cp -r /go/bin/* /build/build'
