@@ -71,10 +71,45 @@ You need to have go installed on the system where you wish to compile it.
 For more information in regards go installation please check https://golang.org/doc/install
 
 ```
-git clone https://github.com/notonthehighstreet/devops-tools.git
-cd devops-tools/consul-cleaner
-go get ./...
-go build consul-cleaner
+go get github.com/notonthehighstreet/consul-cleaner
+go install github.com/notonthehighstreet/consul-cleaner
 
 ```
-It should produce a executable called consul-cleaner in your current directory.
+
+If the git repo requires ssh key auth you might want to set the global git config to over write the https protocol with the git one. If this is the case please run the following line.
+
+```
+git config --global url."git@github.com:".insteadOf "https://github.com/"
+```
+
+After running go install if your $GOPATH is set correctly you should find the binary in your $GOPATH/bin folder.
+
+# Docker
+Before you begin you need docker and docker-compose installed. For more information please check https://www.docker.com.
+
+
+If you'd like to create a docker container for the tool please run the following.
+
+The process has 2 stages:
+
+- 1st creates a container to download and compile the source code.
+- 2nd creates the actual container which will host the consul-cleaner.
+
+```
+git clone https://github.com/notonthehighstreet/consul-cleaner
+cd consul-cleaner
+docker-compose run builder
+docker build ../consul-cleaner
+```
+
+#Versioning 
+
+Versioning is baked into the build process.
+
+If you pass in the **main.version** variable during the go install process the tool will return the set value if you run **consul-cleaner -v**
+
+```
+go install --ldflags "-X main.version='app version' -extldflags -static -s" -v github.com/notonthehighstreet/consul-cleaner
+```
+
+Have fun...
