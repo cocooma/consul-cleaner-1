@@ -1,9 +1,8 @@
 builder:
-  build: .
-  dockerfile: Dockerfile-builder
+  image: hub.noths.com/golang:v1.6.2
   volumes:
-   - $PWD:/build
-   - $SSH_AUTH_SOCK:/ssh-agent
+    - ${PWD}:/build
+    - ${SSH_AUTH_SOCK}:/ssh-agent
   environment:
-    # make ssh keys available via ssh forwarding (see volume entry)
     - SSH_AUTH_SOCK=/ssh-agent
+  command: sh /build/run.sh
