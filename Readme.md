@@ -47,6 +47,7 @@ Usage of consul-cleaner
   -t, --tag                        AWS tag
   -tv, --tagValue                  AWS tag value
   -u, --url=localhost              Consul member endpoint. Default: localhost
+  -v, --version                    Consul-cleaner Version
 ```
 
 
