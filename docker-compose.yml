@@ -6,7 +6,7 @@ builder:
   environment:
     - SSH_AUTH_SOCK=/ssh-agent
   command: |
-    sh -c 'apk --update add git bash openssh-client ca-certificates \
+    sh -c 'apk --update add git bash openssh-client \
     && git config --global url."git@github.com:".insteadOf "https://github.com/" \
     && mkdir ~/.ssh \
     && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config \
