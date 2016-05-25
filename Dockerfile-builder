@@ -1,8 +1,0 @@
-FROM hub.noths.com/golang:v1.6.2
-
-RUN apk --update add git openssh-client \
-  && go get -d -v github.com/notonthehighstreet/consul-cleaner \
-  && go install --ldflags '-extldflags -static -s' -v github.com/notonthehighstreet/consul-cleaner \
-  && ls -l /go/bin/* \
-  && cp -r /go/bin /build \
-  && ls -l /build
