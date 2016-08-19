@@ -1,5 +1,5 @@
 builder:
-  image: hub.noths.com/golang:v1.6.2
+  image: hub.noths.com/golang:v1.7
   volumes:
     - ${PWD}:/build
     - ${SSH_AUTH_SOCK}:/ssh-agent
