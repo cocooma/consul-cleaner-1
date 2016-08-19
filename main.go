@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/cocooma/awsdiscovery"
+	"github.com/docker/docker/opts"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/hashicorp/consul/api"
 )
@@ -18,6 +19,7 @@ var (
 	nsc                                                                                                                                               int
 	hosts                                                                                                                                             []string
 	wg                                                                                                                                                sync.WaitGroup
+	tagsValues                                                                                                                                        = opts.NewListOpts(nil)
 )
 
 func connection(uurl, pport string) *api.Client {
@@ -37,11 +39,23 @@ func consulmembers(consulClient *api.Client) []string {
 	return ips
 }
 
-func awshosts(awsregion, tag, tagvalue string) []string {
+func awshosts(awsregion string, tagsValues opts.ListOpts) []string {
+	defer func() {
+		if e := recover(); e != nil {
+			fmt.Println("Whoops some error happened:", e)
+		}
+	}()
+	var allIps []string
+	tagsValuesSlice := tagsValues.GetAll()
 	session := awsdiscovery.AwsSessIon(awsregion)
-	filter := awsdiscovery.AwsFilter(tag, tagvalue)
-	ips := awsdiscovery.AwsInstancePrivateIP(session, filter)
-	return ips
+	for _, val := range tagsValuesSlice {
+		tv := strings.Split(val, ":")
+		tag, value := tv[0], tv[1]
+		filter := awsdiscovery.AwsFilter(tag, value)
+		ips := awsdiscovery.AwsInstancePrivateIP(session, filter)
+		allIps = append(allIps, ips...)
+	}
+	return allIps
 }
 
 func readHostsFromStdin() []string {
@@ -154,23 +168,22 @@ func forceLeaveBadNode(consulClient *api.Client, nodeStatusCode int, member stri
 }
 
 func main() {
-	flag.StringVar(&hostdiscovery, []string{"hd", "-host-discovery"}, "aws", "Host discovery. 'consul' or 'aws' or 'stdin'")
-	flag.StringVar(&url, []string{"u", "-url"}, "localhost", "Consul member endpoint. Default: localhost")
-	flag.StringVar(&port, []string{"p", "-port"}, "8500", "Consul members endpoint port. Default: 8500")
-	flag.StringVar(&awsregion, []string{"ar", "-aws-region"}, "eu-west-1", "AWS Region. Default: eu-west-1")
-	flag.StringVar(&tag, []string{"t", "-tag"}, "", "AWS tag")
-	flag.StringVar(&tagvalue, []string{"tv", "-tag-value"}, "", "AWS tag value")
-	flag.IntVar(&nsc, []string{"nsc", "-node-status-code"}, 4, "Consul node status code. Default: 4")
-	flag.BoolVar(&listTargetHosts, []string{"lth", "-list-target-hosts"}, false, "List target hosts")
-	flag.BoolVar(&listNodeStatus, []string{"lns", "-list-node-status"}, false, "List nodes status")
-	flag.BoolVar(&listChecks, []string{"lchk", "-list-checks"}, false, "List checks")
-	flag.BoolVar(&listSrvInState, []string{"lsrvis", "-list-service-in-state"}, false, "List of services in specific state. Use it with --service-state")
-	flag.BoolVar(&listAllSrv, []string{"lasrv", "-list-all-services"}, false, "List of all services")
-	flag.StringVar(&srvState, []string{"ss", "-service-state"}, "critical", "State of the service you wish to deregister. Default: critical")
-	flag.BoolVar(&deregisterSrv, []string{"drsrv", "-deregister-service"}, false, "Deregister service. Use it with --service-state")
-	flag.BoolVar(&forceLeaveNode, []string{"fl", "-force-leave-node"}, false, "Force leave consul node. Use it with --node-status-code")
+	flag.StringVar(&hostdiscovery, []string{"hd", "-host-discovery"}, "aws", "Host discovery. 'consul' or 'aws' or 'stdin'.")
+	flag.StringVar(&url, []string{"u", "-url"}, "localhost", "Consul member endpoint. Default: localhost.")
+	flag.StringVar(&port, []string{"p", "-port"}, "8500", "Consul members endpoint port. Default: 8500.")
+	flag.StringVar(&awsregion, []string{"ar", "-aws-region"}, "eu-west-1", "AWS Region. Default: eu-west-1.")
+	flag.Var(&tagsValues, []string{"tv", "-tag-value"}, "AWS tag and value. Usage '-tv tag:value'. It is repeatable.")
+	flag.IntVar(&nsc, []string{"nsc", "-node-status-code"}, 4, "Consul node status code. Default: 4.")
+	flag.BoolVar(&listTargetHosts, []string{"lth", "-list-target-hosts"}, false, "List target hosts.")
+	flag.BoolVar(&listNodeStatus, []string{"lns", "-list-node-status"}, false, "List nodes status.")
+	flag.BoolVar(&listChecks, []string{"lchk", "-list-checks"}, false, "List checks.")
+	flag.BoolVar(&listSrvInState, []string{"lsrvis", "-list-service-in-state"}, false, "List of services in specific state. Use it with --service-state.")
+	flag.BoolVar(&listAllSrv, []string{"lasrv", "-list-all-services"}, false, "List of all services.")
+	flag.StringVar(&srvState, []string{"ss", "-service-state"}, "critical", "State of the service you wish to deregister. Default: critical.")
+	flag.BoolVar(&deregisterSrv, []string{"drsrv", "-deregister-service"}, false, "Deregister service. Use it with --service-state.")
+	flag.BoolVar(&forceLeaveNode, []string{"fl", "-force-leave-node"}, false, "Force leave consul node. Use it with --node-status-code.")
 	flag.BoolVar(&dryRun, []string{"d", "-dryrun"}, false, "Dryrun")
-	flag.BoolVar(&ver, []string{"v", "-version"}, false, "Consul-cleaner Version")
+	flag.BoolVar(&ver, []string{"v", "-version"}, false, "Consul-cleaner Version.")
 	flag.Parse()
 
 	consulClient := connection(url, port)
@@ -184,7 +197,7 @@ func main() {
 	case "consul":
 		hosts = consulmembers(consulClient)
 	case "aws":
-		hosts = awshosts(awsregion, tag, tagvalue)
+		hosts = awshosts(awsregion, tagsValues)
 	case "stdin":
 		hosts = readHostsFromStdin()
 	}
