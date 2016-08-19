@@ -5,6 +5,8 @@ builder:
     - ${SSH_AUTH_SOCK}:/ssh-agent
   environment:
     - SSH_AUTH_SOCK=/ssh-agent
+    - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin
+    - GOPATH=/go
   command: |
     sh -c 'apk --update add git openssh-client \
     && git config --global url."git@github.com:".insteadOf "https://github.com/" \
