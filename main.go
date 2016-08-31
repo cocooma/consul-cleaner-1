@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"github.com/cocooma/awsdiscovery"
+	flag "github.com/cocooma/mflag"
 	"github.com/docker/docker/opts"
-	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/hashicorp/consul/api"
 )
 
