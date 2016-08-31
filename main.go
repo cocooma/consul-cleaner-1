@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -14,13 +15,31 @@ import (
 )
 
 var (
-	str, url, port, srvState, awsregion, tag, tagvalue, hostdiscovery, line, version                                                                  string
-	listTargetHosts, showMmemberStatus, listChecks, listAllSrv, deregisterSrv, listSrvInState, listNodeStatus, forceLeaveNode, dryRun, validnode, ver bool
-	nsc                                                                                                                                               int
-	hosts                                                                                                                                             []string
-	wg                                                                                                                                                sync.WaitGroup
-	tagsValues                                                                                                                                        = opts.NewListOpts(nil)
+	str, url, port, srvState, srvName, awsregion, tag, tagvalue, hostdiscovery, line, version                                                                          string
+	listTargetHosts, showMmemberStatus, listChecks, listAllSrv, deregisterSrv, listSrvInState, listNodeStatus, forceLeaveNode, dryRun, validnode, ver, rnptSet, dsnSet bool
+	nsc                                                                                                                                                                int
+	hosts                                                                                                                                                              []string
+	wg                                                                                                                                                                 sync.WaitGroup
+	tagsValues                                                                                                                                                         = opts.NewListOpts(nil)
+	srvnameNode                                                                                                                                                        = opts.NewListOpts(validateSNisSet)
+	srvnameNodePortTag                                                                                                                                                 = opts.NewListOpts(validateSNPTisSet)
 )
+
+func validateSNPTisSet(val string) (string, error) {
+	if val != "" {
+		rnptSet = true
+		return val, nil
+	}
+	return "", fmt.Errorf("%s snpt is not set", val)
+}
+
+func validateSNisSet(val string) (string, error) {
+	if val != "" {
+		dsnSet = true
+		return val, nil
+	}
+	return "", fmt.Errorf("%s sn is not set", val)
+}
 
 func connection(uurl, pport string) *api.Client {
 	connection, err := api.NewClient(&api.Config{Address: uurl + ":" + pport})
@@ -91,10 +110,18 @@ func listCheck(consulClient *api.Client) {
 	}
 }
 
+func getServiceID(consulClient *api.Client, serviceName string) {
+	service, _, _ := consulClient.Catalog().Service(serviceName, "", nil)
+	// return service
+	for _, srv := range service {
+		fmt.Println(srv.ServiceID)
+	}
+}
+
 func listServices(consulClient *api.Client) {
-	services, _ := consulClient.Agent().Services()
-	for _, service := range services {
-		fmt.Println(service.ID, service.Service, service.Tags)
+	services, _, _ := consulClient.Catalog().Services(nil)
+	for srv := range services {
+		fmt.Println(srv)
 	}
 }
 
@@ -114,7 +141,82 @@ func serviceNameServiceID(connection *api.Client, serviceCheckStatus string) map
 	return services
 }
 
-func deregisterService(consulConnection *api.Client, serviceCheckStatus string) {
+func registerService(consulConnection *api.Client, srvnameNodePortTag opts.ListOpts) {
+	defer func() {
+		if e := recover(); e != nil {
+			fmt.Println("Whoops some error happened:", e)
+		}
+	}()
+
+	srvnameNodePortTagSlice := srvnameNodePortTag.GetAll()
+	for _, val := range srvnameNodePortTagSlice {
+		// add service tag if it is not specified
+		if strings.Count(val, ":") == 2 {
+			val = val + ":"
+		}
+
+		sapt := strings.Split(val, ":")
+		srvname, addr, prt, tag := sapt[0], sapt[1], sapt[2], sapt[3]
+
+		if srvname != "" || addr != "" {
+			port, _ := strconv.Atoi(prt)
+			service := &api.AgentService{
+				ID:      srvname,
+				Service: srvname,
+				Port:    port,
+				Tags:    []string{tag},
+			}
+			register := api.CatalogRegistration{
+				Node:    addr,
+				Service: service,
+				Address: addr,
+				Check:   nil,
+			}
+			_, err := consulConnection.Catalog().Register(&register, nil)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			fmt.Println("There is no service with the given name: - " + srvname + " - available to register!")
+		}
+	}
+}
+
+func deregisterNodes(consulConnection *api.Client, srvnameNode opts.ListOpts) {
+	defer func() {
+		if e := recover(); e != nil {
+			fmt.Println("Whoops some error happened:", e)
+		}
+	}()
+
+	srvnameNodeSlice := srvnameNode.GetAll()
+	for _, val := range srvnameNodeSlice {
+		sn := strings.Split(val, ":")
+		srvname, node := sn[0], sn[1]
+		if srvname != "" || node != "" {
+			dereg := api.CatalogDeregistration{
+				ServiceID: srvname,
+				Node:      node,
+				Address:   node,
+			}
+			deregnode := api.CatalogDeregistration{
+				Node: node,
+			}
+			_, err := consulConnection.Catalog().Deregister(&dereg, nil)
+			if err != nil {
+				panic(err)
+			}
+			_, errr := consulConnection.Catalog().Deregister(&deregnode, nil)
+			if errr != nil {
+				panic(errr)
+			}
+		} else {
+			fmt.Println("There is no service with the given name: - " + srvname + " - available to deregister!")
+		}
+	}
+}
+
+func deregisterServiceInState(consulConnection *api.Client, serviceCheckStatus string) {
 	defer func() {
 		if e := recover(); e != nil {
 			fmt.Println("Whoops some error happened:", e)
@@ -169,19 +271,28 @@ func forceLeaveBadNode(consulClient *api.Client, nodeStatusCode int, member stri
 
 func main() {
 	flag.StringVar(&hostdiscovery, []string{"hd", "-host-discovery"}, "aws", "Host discovery. 'consul' or 'aws' or 'stdin'.")
+
 	flag.StringVar(&url, []string{"u", "-url"}, "localhost", "Consul member endpoint. Default: localhost.")
 	flag.StringVar(&port, []string{"p", "-port"}, "8500", "Consul members endpoint port. Default: 8500.")
+
 	flag.StringVar(&awsregion, []string{"ar", "-aws-region"}, "eu-west-1", "AWS Region. Default: eu-west-1.")
 	flag.Var(&tagsValues, []string{"tv", "-tag-value"}, "AWS tag and value. Usage '-tv tag:value'. It is repeatable.")
-	flag.IntVar(&nsc, []string{"nsc", "-node-status-code"}, 4, "Consul node status code. Default: 4.")
+
 	flag.BoolVar(&listTargetHosts, []string{"lth", "-list-target-hosts"}, false, "List target hosts.")
 	flag.BoolVar(&listNodeStatus, []string{"lns", "-list-node-status"}, false, "List nodes status.")
 	flag.BoolVar(&listChecks, []string{"lchk", "-list-checks"}, false, "List checks.")
 	flag.BoolVar(&listSrvInState, []string{"lsrvis", "-list-service-in-state"}, false, "List of services in specific state. Use it with --service-state.")
-	flag.BoolVar(&listAllSrv, []string{"lasrv", "-list-all-services"}, false, "List of all services.")
+	flag.BoolVar(&listAllSrv, []string{"lasrv", "-list-all-services"}, false, "List all services.")
+
+	flag.BoolVar(&deregisterSrv, []string{"drsrv", "-deregister-service"}, false, "Deregister service in specific state. Use it with --service-state.")
 	flag.StringVar(&srvState, []string{"ss", "-service-state"}, "critical", "State of the service you wish to deregister. Default: critical.")
-	flag.BoolVar(&deregisterSrv, []string{"drsrv", "-deregister-service"}, false, "Deregister service. Use it with --service-state.")
+
+	flag.Var(&srvnameNode, []string{"dsn", "-deregister-srvname-node"}, "Deregister service node. Usage '-dsn serviceName:node'. It is repeatable.")
+	flag.Var(&srvnameNodePortTag, []string{"rsnpt", "-register-srvname-node-port-tag"}, "Register service node. Usage '-rsnpt serviceName:node:port:tag'. It is repeatable.")
+
+	flag.IntVar(&nsc, []string{"nsc", "-node-status-code"}, 4, "Consul node status code. Default: 4.")
 	flag.BoolVar(&forceLeaveNode, []string{"fl", "-force-leave-node"}, false, "Force leave consul node. Use it with --node-status-code.")
+
 	flag.BoolVar(&dryRun, []string{"d", "-dryrun"}, false, "Dryrun")
 	flag.BoolVar(&ver, []string{"v", "-version"}, false, "Consul-cleaner Version.")
 	flag.Parse()
@@ -202,22 +313,30 @@ func main() {
 		hosts = readHostsFromStdin()
 	}
 
-	if listTargetHosts == true {
+	if listTargetHosts {
 		listTargetHost(hosts)
 		os.Exit(0)
 	}
 
-	if deregisterSrv == true {
+	if rnptSet {
+		registerService(connection(url, port), srvnameNodePortTag)
+	}
+
+	if dsnSet {
+		deregisterNodes(connection(url, port), srvnameNode)
+	}
+
+	if deregisterSrv {
 		wg.Add(len(hosts))
 		for _, ip := range hosts {
 			go func(ip, srvState string) {
-				deregisterService(connection(ip, "8500"), srvState)
+				deregisterServiceInState(connection(ip, "8500"), srvState)
 				wg.Done()
 			}(ip, srvState)
 		}
 	}
 
-	if listSrvInState == true {
+	if listSrvInState {
 		wg.Add(len(hosts))
 		for _, ip := range hosts {
 			go func(ip, srvState string) {
@@ -227,7 +346,7 @@ func main() {
 		}
 	}
 
-	if listNodeStatus == true {
+	if listNodeStatus {
 		wg.Add(len(hosts))
 		for _, ip := range hosts {
 			go func(ip string) {
@@ -237,7 +356,7 @@ func main() {
 		}
 	}
 
-	if listChecks == true {
+	if listChecks {
 		wg.Add(len(hosts))
 		for _, ip := range hosts {
 			go func(ip string) {
@@ -247,7 +366,7 @@ func main() {
 		}
 	}
 
-	if listAllSrv == true {
+	if listAllSrv {
 		wg.Add(len(hosts))
 		for _, ip := range hosts {
 			go func(ip string) {
@@ -257,7 +376,7 @@ func main() {
 		}
 	}
 
-	if forceLeaveNode == true {
+	if forceLeaveNode {
 		wg.Add(len(hosts))
 		for _, ip := range hosts {
 			go func(ip string) {
